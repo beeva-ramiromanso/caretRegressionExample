@@ -88,9 +88,13 @@ findOptimalModelsReg<-function(train,test,fmla, Kfolds=5, repeats=2, verbose=F, 
                             RRF=modelRrf,
                             XGL=modelXgl,
                             XGT=modelXgt))
+  testResults <- t(data.frame(pr.Gbm,pr.SVM,pr.RF,pr.RRF,pr.XGL,pr.XGT))
   if(verbose){
     # summarize the distributions
+    cat("RCV results\n\n")
     print(summary(results))
+    cat("Test results\n\n")
+    print(testResults)
   }
   if(plot){
     # boxplots of results
@@ -98,7 +102,7 @@ findOptimalModelsReg<-function(train,test,fmla, Kfolds=5, repeats=2, verbose=F, 
     # dot plots of results
     print(dotplot(results) )
   }
-  ret = list(#glm=list(model=modelGlm,bestTune=modelGlm$bestTune,testMetrics=pr.Glm),
+  ret = list(finalTestResults=testResults,
              gbm=list(model=modelGbm,bestTune=modelGbm$bestTune,testMetrics=pr.Gbm),
              svm=list(model=modelSvm,bestTune=modelSvm$bestTune,testMetrics=pr.SVM),
              rf=list(model=modelRf,bestTune=modelRf$bestTune,testMetrics=pr.RF),
