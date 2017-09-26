@@ -38,47 +38,72 @@ findOptimalModelsReg<-function(train,test,fmla, Kfolds=5, repeats=2, verbose=F, 
                           returnData = FALSE,
                           allowParallel = TRUE)
   
-  # train the linear regression model (baseline)
-  # modelGlm <- train(fmla, data=train, method = 'glm', trControl=control, verbose=FALSE)
-  # predictions.Glm <- predict(modelGlm, newdata=test)
-  # pr.Glm<-postResample(predictions.Glm, test[,as.character(fmla[[2]])])
+  ### Some models requires dummy vars
   
-  # train the GBM model
+  #This transformation SHOULD work for both test and train. If not, train-test sampling was done incorrectly.
+  #I'll throw an error later
+  dmy <- dummyVars(fmla, data = train) 
+  train_dummy <- data.frame(predict(dmy, newdata = train))
+  test_dummy <- data.frame(predict(dmy, newdata = test))
+  train_target = train[,as.character(fmla[[2]])]
+  test_target = test[,as.character(fmla[[2]])]
+  
+    # train the GBM model
   modelGbm <- train(fmla, data=train, method = 'gbm', trControl=control, verbose=FALSE)
   predictions.Gbm <- predict(modelGbm, newdata=test)
-  pr.Gbm<-postResample(predictions.Gbm, test[,as.character(fmla[[2]])])
+  pr.Gbm<-postResample(predictions.Gbm, test_target)
   pb$tick()
   
   # train the SVM model
-  modelSvm <- train(fmla, data=train, method="svmRadial", trControl=control)
-  predictions.SVM <- predict(modelSvm, newdata=test)
-  pr.SVM <- postResample(predictions.SVM, test[,as.character(fmla[[2]])])
+  modelSvm <- train(x=train_dummy, y=train_target, method="svmRadial", trControl=control)
+  predictions.SVM <- predict(modelSvm, newdata=test_dummy)
+  pr.SVM <- postResample(predictions.SVM, test_target)
   pb$tick()
   
   # train the RF model
   modelRf <- train(fmla, data=train, method="rf", trControl=control)
   predictions.RF <- predict(modelRf, newdata=test)
-  pr.RF <- postResample(predictions.RF, test[,as.character(fmla[[2]])])
+  pr.RF <- postResample(predictions.RF, test_target)
   pb$tick()
   
   # train the RRF model
   modelRrf <- train(fmla, data=train, method="RRF", trControl=control)
   predictions.RRF <- predict(modelRrf, newdata=test)
-  pr.RRF <- postResample(predictions.RRF, test[,as.character(fmla[[2]])])
+  pr.RRF <- postResample(predictions.RRF, test_target)
   pb$tick()
   
   # train the xgLinear model
   # nthread=1 --> allow caret to handle this
-  modelXgl <- train(fmla, data=train, method="xgbLinear", trControl=control,nthread=1)
-  predictions.XGL <- predict(modelXgl, newdata=test)
-  pr.XGL <- postResample(predictions.XGL, test[,as.character(fmla[[2]])])
+  
+  xgbGrid <- expand.grid(
+    nrounds= c(250, 500, 1000),
+    eta = c(0.01, 0.1, 0.2),
+    lambda = c(0.01, 0.1, 1),
+    alpha = c(.01, .1, 1)
+  )
+  
+  modelXgl <- train(x=train_dummy, y=train_target, method="xgbLinear", trControl=control,
+                    tuneGrid = xgbGrid,nthread=1)
+  predictions.XGL <- predict(modelXgl, newdata=test_dummy)
+  pr.XGL <- postResample(predictions.XGL, test_target)
   pb$tick()
   
   # train the xgTree model
   # nthread=1 --> allow caret to handle this
-  modelXgt <- train(fmla, data=train, method="xgbTree", trControl=control,nthread=1)
-  predictions.XGT <- predict(modelXgt, newdata=test)
-  pr.XGT <- postResample(predictions.XGT, test[,as.character(fmla[[2]])])
+  
+  xgbGrid <- expand.grid(
+    nrounds = c(250, 500, 1000),
+    max_depth = c(1, 2, 4, 6),
+    eta = c(0.01, 0.1, 0.2),
+    gamma = 0,
+    colsample_bytree = c(1, 0.5, 0.25),
+    min_child_weight = c(1, 2),
+    subsample = 0.4
+  ) 
+  modelXgt <- train(x=train_dummy, y=train_target, method="xgbTree", trControl=control,
+                    tuneGrid = xgbGrid, nthread=1)
+  predictions.XGT <- predict(modelXgt, newdata=test_dummy)
+  pr.XGT <- postResample(predictions.XGT, test_target)
   pb$tick()
   
   # collect resamples
@@ -103,6 +128,7 @@ findOptimalModelsReg<-function(train,test,fmla, Kfolds=5, repeats=2, verbose=F, 
     print(dotplot(results) )
   }
   ret = list(finalTestResults=testResults,
+             dummyTransform=dmy,
              gbm=list(model=modelGbm,bestTune=modelGbm$bestTune,testMetrics=pr.Gbm),
              svm=list(model=modelSvm,bestTune=modelSvm$bestTune,testMetrics=pr.SVM),
              rf=list(model=modelRf,bestTune=modelRf$bestTune,testMetrics=pr.RF),
